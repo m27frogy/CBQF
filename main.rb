@@ -266,9 +266,21 @@ open(prefix + ".txt","w+") do |output|
 		if not persist
 			puts "Fetching..."
 			questions = fetch_pages(generate_pages(start,stop))
+			# Reject Mathematics questions, since they contain pictures.
 			questions = questions.reject { |data| data[0].match("Mathematics") }
-			puts "Writing database..."
-			generate_database(questions)
+			if File.file? "data.db"
+				print "Overwrite pre-existing database (T/F): "
+				overwrite = gets.chomp
+				if overwrite.downcase[0,1] == "t"
+					puts "Writing database..."
+					generate_database(questions)
+				else
+					puts "Skipping overwrite..."
+				end
+			else	
+				puts "Writing database..."
+				generate_database(questions)
+			end
 		else
 			questions = fetch_database()
 		end
