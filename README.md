@@ -6,15 +6,16 @@ A CollegeBoard QotD Fetcher, written in Ruby.
 #### Features
 - Fetches QotD from within an automated instance of FireFox.
 - Stores QotD in a special file for later use.
-- Exports QotD in text format in two seperate files.
+- Exports QotD in PDF format for printing conveniently.
 - Allows random shuffling and filtering of topics.
 
 #### Bugs
-- Cannot process QotD containing pictures and therefore skips all Mathematics problems.
+- TBD.
 
 ## Pre-requisites
 - Selenium-WebDriver
 - Nokogiri
+- PDFKit
 - Firefox (or similar browser if you know how to edit the code slightly)
 
 ## Preinstall
@@ -23,6 +24,7 @@ A CollegeBoard QotD Fetcher, written in Ruby.
 2.  Download and install [Firefox](https://www.mozilla.org/en-US/firefox/new/).
 3.  Install selenium-webdriver with a command similar to this: `gem install selenium-webdriver`
 4.  Install Nokogiri with a command similar to this: `gem install nokogiri`
+5.  Install PDFKit with a command similar to this: `gem install pdfkit`
 
 > I don't maintain these pre-install projects, so please look for online solutions if you have difficulty installing these.
 

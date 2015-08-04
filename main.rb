@@ -32,13 +32,14 @@ end
 require "selenium-webdriver"
 require "nokogiri"
 require "date"
+require "pdfkit"
 
 #  Word-wraps strings
 def wrap(s,width=78)
 	s.gsub(/(.{1,#{width}})(\s+|\Z)/, "\\1\n").strip
 end
 
-# Uses Nokogiri to parse the provided page into the information needed
+# Uses Nokogiri to parse the provided page and divide it into questions and answers
 def handle_page(source)
 	# Initialize parsing object
 	page = Nokogiri::HTML(source)
@@ -59,59 +60,6 @@ def handle_page(source)
 		topic << elementsTopic.text
 	end
 	topic.chomp!
-	
-	# Handle question
-	questionInstructions,question = "",""
-	
-	elementsQuestion = page.css("div.questionStem>p")
-	if elementsQuestion.kind_of?(Nokogiri::XML::NodeSet) or elementsQuestion.kind_of?(Array)
-		elementsQuestion.each do |element|
-			if questionInstructions == ""
-				questionInstructions = wrap(element.text.gsub("\n",""))
-			else
-				question = wrap(element.text.gsub("\n","") + "\n\n")
-			end
-		end
-	end
-	
-	# Handle Choices
-	choiceA,choiceB,choiceC,choiceD,choiceE = ""
-	# Fetch the choices with some help
-	elementsChoices = page.css("label").select {|element| element["for"][0,11] == "qotdChoices"}
-	if elementsChoices.kind_of?(Nokogiri::XML::NodeSet) or elementsChoices.kind_of?(Array)
-		elementsChoices.each do |element|
-			# Handle each element accordingly
-			case element["for"][11,1]
-			when "A"
-				choiceA = wrap element.text.strip
-			when "B"
-				choiceB = wrap element.text.strip
-			when "C"
-				choiceC = wrap element.text.strip
-			when "D"
-				choiceD = wrap element.text.strip
-			when "E"
-				choiceE = wrap element.text.strip
-			end
-		end
-	end
-	
-	# Handle answer
-	answer = ""
-	
-	elementsAnswer = page.css("div#qotdExplDesc>p")
-	if elementsAnswer.kind_of?(Nokogiri::XML::NodeSet) or elementsAnswer.kind_of?(Array)
-		elementsAnswer.each do |element|
-			if element["id"] != "qotdExplDescP1" then
-				answer << element.text
-			end
-		end
-	elsif elementsAnswer.kind_of? Nokogiri::XML::Element
-		answer << elementsAnswer.text
-	end
-	answer = wrap answer
-	
-	return [topic,questionInstructions,question,choiceA,choiceB,choiceC,choiceD,choiceE,answer]
 end
 
 # Fetch singlular page contents
