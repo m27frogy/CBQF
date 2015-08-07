@@ -1,3 +1,5 @@
+# encoding: utf-8
+
 # CollegeBoard QotD Fetcher
 #
 # CollegeBoard, SAT, and PSAT/NMSQT are registered trademarks of
@@ -7,13 +9,14 @@
 #
 #
 # = Modifications to Core Object Class
+
 class Object
 	# Allows code to easily ask for certain instance variables
 	def must_have_instance_variables(*args)
 		vars = instance_variables.inject({}) { |h,mvar| h[var] = true; h}
 		args.each do |var|
 			unless vars[var]
-				raise ArgumentError, %{Instance variable "@#{var} not defined"}
+				raise ArgumentError, %{Instance variable @#{var} not defined}
 			end
 		end
 	end
@@ -32,7 +35,20 @@ end
 require "selenium-webdriver"
 require "nokogiri"
 require "date"
+require "tmpdir"
+require "open-uri"
 require "pdfkit"
+
+def tmpdir
+  path = File.expand_path "#{Dir.tmpdir}/#{Time.now.to_i}#{rand(1000)}/"
+  FileUtils.mkdir_p path
+  yield path
+ensure
+  FileUtils.rm_rf( path ) if File.exists?( path )
+end
+
+def create_file()
+end
 
 #  Word-wraps strings
 def wrap(s,width=78)
@@ -44,22 +60,72 @@ def handle_page(source)
 	# Initialize parsing object
 	page = Nokogiri::HTML(source)
 	
-	# I apologize for this extremely ugly code here, but the docs are rather obtuse
-	# about how exactly the css function handles singular objects.  So I decided
-	# to be on the safe side.
+	
+	# Handle statistics
+	def statistics()
+		correct,wrong = "",""
+		stat_table = page.css("table#qotdPercentCorrectTable")
+		stat_table.children.each do |c|
+			c.children.each do |c|
+				if c.type == "tbody" then
+					c.children.each do |ch|
+						if ch.type == "tr" then
+							ch.children.each do |chd|
+								if chd.type == "td" then
+									if correct.empty?
+										correct = chd.text
+									else
+										wrong = chd.text
+									end
+									break
+								end
+							end
+							break if not (correct.empty? or wrong.empty?)
+						end
+					end
+					break if not (correct.empty? or wrong.empty?)
+				end
+				break if not (correct.empty? or wrong.empty?)
+			end
+			break if not (correct.empty? or wrong.empty?)
+		end
+		correct = correct.to_i
+		wrong = wrong.to_i
+	end
+	
 	
 	# Handle topic
 	topic = ""
-	elementsTopic = page.css("div.floatLeft.qotdLeftCol>p")
-	if elementsTopic.kind_of?(Nokogiri::XML::NodeSet) or elementsTopic.kind_of?(Array)
-		elementsTopic.each do |element|
-			topic << element.text.strip
-			break
-		end
-	elsif elementsTopic.kind_of? Nokogiri::XML::Element
-		topic << elementsTopic.text
+	topics = page.css("p.qotdBreadcrumb")
+	topics.each do |element|
+		topic << element.text.strip
+		break
 	end
-	topic.chomp!
+	
+	# Handle question
+	question = ""
+	main_body = page.css("div#mainBody")
+	match = "id"
+	main_body.each do |element|
+		element.css("div#qotd").children.each do |ele|
+			ele.remove if ele[match] == "questionMetaContainer" or ele[match] == "qotdQuestionFooter"
+		end
+		question << element.inner_html
+		break
+	end
+	
+	# Handle answer
+	answer = ""
+	main_body2 = page.css("div#mainBody2")
+	main_body2.each do |element|
+		element.css("div#qotd2").children.each do |ele|
+			ele.remove if ele[match] == "questionMetaContainer2"
+		end
+		answer << element.inner_html
+		break
+	end
+	
+	return [topic,question,answer]
 end
 
 # Fetch singlular page contents
@@ -72,19 +138,31 @@ def fetch_page(driver,page)
 	# Go to page
 	driver.navigate.to(page)
 	
-	# Find and click on qotdChoicesA
-	qotdChoicesA = driver.find_element(:id, "qotdChoicesA")
-	qotdChoicesA.click
+=begin
+		# Find and click on qotdChoicesA
+		qotdChoicesA = driver.find_element(:id, "qotdChoicesA")
+		qotdChoicesA.click
+		
+		# Find and click on submit button
+		qotdSubmit = driver.find_element(:id, "qotdSubmit")
+		qotdSubmit.click
+=end
 	
-	# Find and click on submit button
-	qotdSubmit = driver.find_element(:id, "qotdSubmit")
-	qotdSubmit.click
-	
+=begin
 	begin
-		# Find and click on the qotdShowAnswer button
+		#Find and click on the qotdShowAnswer button
 		qotdShowAnswer = driver.find_element(:id,"qotdShowAnswer")
 		qotdShowAnswer.click
 	rescue
+	end
+=end
+	
+	begin
+		printQuestionId = driver.find_element(:id,"printQuestionIdExists")
+		printQuestionId.click
+	rescue
+		printQuestionId = driver.find_element(:id,"printQuestionIdDoesntExist")
+		printQuestionId.click
 	end
 	
 	# Out of habit and charity, I leave the mostly useless return call here.
@@ -153,6 +231,7 @@ def generate_database(obj)
 	end
 end
 
+=begin
 puts "#########################################"
 puts "#       CollegeBoard QotD Fetcher       #"
 puts "#########################################"
@@ -273,3 +352,12 @@ open(prefix + ".txt","w+") do |output|
 end
 puts "Export complete!"
 puts %{Exported #{count-1} questions!}
+=end
+driver = Selenium::WebDriver.for :firefox
+topic,question,answer = *handle_page(fetch_page(driver,"https://sat.collegeboard.org/practice/sat-question-of-the-day"))
+print %{<head><meta charset="UTF-8"></head>}
+print topic
+print question.encode("utf-8")
+print answer.encode("utf-8")
+driver.close
+driver.quit
