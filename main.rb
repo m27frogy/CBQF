@@ -59,19 +59,22 @@ end
 def handle_page(source)
 	# Initialize parsing object
 	page = Nokogiri::HTML(source)
+	# Enables me to get over the relative slowness of recreating strings
+	match = "id"
 	
 	
 	# Handle statistics
-	def statistics()
-		correct,wrong = "",""
+	correct,wrong = "",""
+	total,percentage = 0,0
+	begin
 		stat_table = page.css("table#qotdPercentCorrectTable")
 		stat_table.children.each do |c|
 			c.children.each do |c|
-				if c.type == "tbody" then
+				if c.name == "tbody" then
 					c.children.each do |ch|
-						if ch.type == "tr" then
+						if ch.name == "tr" then
 							ch.children.each do |chd|
-								if chd.type == "td" then
+								if chd.name == "td" then
 									if correct.empty?
 										correct = chd.text
 									else
@@ -91,7 +94,43 @@ def handle_page(source)
 		end
 		correct = correct.to_i
 		wrong = wrong.to_i
+	rescue
 	end
+	if correct == 0 or wrong == 0 then
+		correct = ""
+		wrong = ""
+	end
+	if (correct == "" and wrong == "") then
+		total_num = page.css("div#questionMetaTotalNum")
+		total_num.children.each do |c|
+			if c.name == "strong" then
+				total = c.text.strip.gsub(",", "").to_i
+				break
+			end
+		end
+		if total.kind_of? Integer then
+			meta_stats = page.css("div.qotdMetaStats")
+			meta_stats.children.each do |c|
+				if c.name == "div" and c.text.match "%" then
+					percentage = c.text.to_i * 0.01
+					if percentage != 0 then
+						correct = (total * percentage).floor
+						wrong = (total * (1 - percentage)).floor
+						break
+					end
+				end
+			end
+		else
+			raise "Unable to fetch statistics (call 1)"
+		end
+	elsif (correct.kind_of? Integer and wrong.kind_of? Integer) then
+		raise "Strange typing of correct/wrong"
+	end
+	if (correct == "" and wrong == "") then
+		raise "Unable to fetch statistics (call 2)"
+	end
+	puts "|",total,correct,wrong,"|"
+	
 	
 	
 	# Handle topic
@@ -105,7 +144,6 @@ def handle_page(source)
 	# Handle question
 	question = ""
 	main_body = page.css("div#mainBody")
-	match = "id"
 	main_body.each do |element|
 		element.css("div#qotd").children.each do |ele|
 			ele.remove if ele[match] == "questionMetaContainer" or ele[match] == "qotdQuestionFooter"
