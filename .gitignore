@@ -1,3 +1,6 @@
-# Ignore text files and databases
+# Ignore text files, databases, html/xhtml files, and PDFs.
 *.txt
 *.db
+*.html
+*.xhtml
+*.pdf
