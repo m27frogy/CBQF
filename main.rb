@@ -1,5 +1,6 @@
+#!/usr/bin/env ruby
 # encoding: utf-8
-
+#######################################################################
 # CollegeBoard QotD Fetcher
 #
 # CollegeBoard, SAT, and PSAT/NMSQT are registered trademarks of
@@ -9,6 +10,7 @@
 #
 #
 # = Modifications to Core Object Class
+#######################################################################
 
 class Object
 	# Allows code to easily ask for certain instance variables
@@ -39,6 +41,11 @@ require "tmpdir"
 require "open-uri"
 require "pdfkit"
 
+STARTING_XHTML = "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\"\n\t\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">\n<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"en\" xml:lang=\"en\">\n\t<head>\n\t\t<meta http-equiv=\"content-type\" content=\"text/html; charset=utf-8\"/>\n\t\t<title>title</title>\n\t</head>\n\t<body>" \
+	.encode("utf-8")
+
+ENDING_XHTML = "\n\t</body>\n</html>".encode("utf-8")
+
 def tmpdir
   path = File.expand_path "#{Dir.tmpdir}/#{Time.now.to_i}#{rand(1000)}/"
   FileUtils.mkdir_p path
@@ -53,6 +60,11 @@ end
 #  Word-wraps strings
 def wrap(s,width=78)
 	s.gsub(/(.{1,#{width}})(\s+|\Z)/, "\\1\n").strip
+end
+
+# Fix img tags in XHTML
+def fix_tags(s)
+	s.gsub(/<img(.+?)>/,"<img\\1 />").gsub(/<input(.+?)>/,"<input\\1 />").gsub(/ checked /," checked=\"checked\" ")
 end
 
 # Uses Nokogiri to parse the provided page and divide it into questions and answers
@@ -129,7 +141,6 @@ def handle_page(source)
 	if (correct == "" and wrong == "") then
 		raise "Unable to fetch statistics (call 2)"
 	end
-	puts "|",total,correct,wrong,"|"
 	
 	
 	
@@ -137,7 +148,7 @@ def handle_page(source)
 	topic = ""
 	topics = page.css("p.qotdBreadcrumb")
 	topics.each do |element|
-		topic << element.text.strip
+		topic << element.text.strip.encode("utf-8")
 		break
 	end
 	
@@ -148,7 +159,7 @@ def handle_page(source)
 		element.css("div#qotd").children.each do |ele|
 			ele.remove if ele[match] == "questionMetaContainer" or ele[match] == "qotdQuestionFooter"
 		end
-		question << element.inner_html
+		question << element.inner_html.encode("utf-8")
 		break
 	end
 	
@@ -159,11 +170,60 @@ def handle_page(source)
 		element.css("div#qotd2").children.each do |ele|
 			ele.remove if ele[match] == "questionMetaContainer2"
 		end
-		answer << element.inner_html
+		answer << element.inner_html.encode("utf-8")
 		break
 	end
 	
-	return [topic,question,answer]
+	return [topic,question,answer,total,correct,wrong]
+end
+
+# Create XHMTL 1 Strict pages from fetched pages
+def create_xhtml(pages)
+	xhtml_doc_q = "".encode("utf-8")
+	xhtml_doc_a = "".encode("utf-8")
+	
+	xhtml_doc_q += STARTING_XHTML
+	xhtml_doc_a += STARTING_XHTML
+	count = 1
+	pages.each do |page_data|
+		# Declare basic values
+		section = "".encode("utf-8")
+		topic,question,answer,total,correct,wrong = *page_data
+		
+		################################################
+		# Add title
+		section += "<h2>Question ##{count}</h2>\n<h4>#{topic}</h4>\n<p><br /></p>".encode("utf-8")
+		# Add question
+		section += fix_tags(question.encode("utf-8"))
+		# Add line
+		section += "\n<p><br /></p>\n<hr />\n"
+		
+		# Push to question document
+		xhtml_doc_q += section
+		################################################
+		# Re-declare section
+		section = "".encode("utf-8")
+		
+		# Add title
+		section += "<h2>Question ##{count}</h2>\n<h4>#{topic}</h4>\n<p><br /></p>".encode("utf-8")
+		# Add statistics
+		section += "<p>Out of #{total} people, #{correct} (#{(correct/total*100).to_i}%) guessed this question correctly.</p>\n<p><br /></p>"
+		# Add answer
+		section += fix_tags(answer.encode("utf-8"))
+		# Add line
+		section += "\n<p><br /></p>\n<hr />\n"
+		
+		# Push to answer document
+		xhtml_doc_a += section
+		################################################
+		
+		# Iterate count
+		count += 1
+	end
+	xhtml_doc_q += ENDING_XHTML
+	xhtml_doc_a += ENDING_XHTML
+	
+	return xhtml_doc_q,xhtml_doc_a
 end
 
 # Fetch singlular page contents
@@ -392,10 +452,7 @@ puts "Export complete!"
 puts %{Exported #{count-1} questions!}
 =end
 driver = Selenium::WebDriver.for :firefox
-topic,question,answer = *handle_page(fetch_page(driver,"https://sat.collegeboard.org/practice/sat-question-of-the-day"))
-print %{<head><meta charset="UTF-8"></head>}
-print topic
-print question.encode("utf-8")
-print answer.encode("utf-8")
+xhtml_q, xhtml_a = create_xhtml([handle_page(fetch_page(driver,"https://sat.collegeboard.org/practice/sat-question-of-the-day"))])
+puts xhtml_q
 driver.close
 driver.quit
