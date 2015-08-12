@@ -36,35 +36,77 @@ end
 # Required software
 require "selenium-webdriver"
 require "nokogiri"
+require "pdfkit"
+# Required internal libraries
 require "date"
 require "tmpdir"
 require "open-uri"
-require "pdfkit"
+require "fileutils"
+require "pathname"
+require "net/http"
+require "openssl"
 
+# Constants
 STARTING_XHTML = "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\"\n\t\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">\n<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"en\" xml:lang=\"en\">\n\t<head>\n\t\t<meta http-equiv=\"content-type\" content=\"text/html; charset=utf-8\"/>\n\t\t<title>title</title>\n\t</head>\n\t<body>" \
-	.encode("utf-8")
+	.encode("utf-8").freeze
+ENDING_XHTML = "\n\t</body>\n</html>".encode("utf-8").freeze
+IMG_DIR = File.expand_path "#{Dir.tmpdir}/CBQF/".freeze
+IMAGE_REGEX = /img.*?src="(.*?)"/i.freeze
+WRAP_MATCH = "\\1\n".freeze
+IMG_REGEX, IMG_MATCH = /<img(.+?)>/.freeze,"<img\\1 />".freeze
+INPUT_REGEX, INPUT_MATCH = /<input(.+?)>/.freeze, "<input\\1 />".freeze
+CHECKED_REGEX, CHECKED_MATCH = / checked /.freeze," checked=\"checked\" ".freeze
+WEBSITE_URI = "https://sat.collegeboard.org".freeze
+BASE_PAGE_URI = "#{WEBSITE_URI}/practice/sat-question-of-the-day?questionId=".freeze
 
-ENDING_XHTML = "\n\t</body>\n</html>".encode("utf-8")
 
-def tmpdir
-  path = File.expand_path "#{Dir.tmpdir}/#{Time.now.to_i}#{rand(1000)}/"
-  FileUtils.mkdir_p path
-  yield path
-ensure
-  FileUtils.rm_rf( path ) if File.exists?( path )
-end
-
-def create_file()
-end
+# Creates the dir, if necessary
+FileUtils.mkdir_p IMG_DIR
 
 #  Word-wraps strings
 def wrap(s,width=78)
-	s.gsub(/(.{1,#{width}})(\s+|\Z)/, "\\1\n").strip
+	s.gsub(/(.{1,#{width}})(\s+|\Z)/, WRAP_MATCH).strip
 end
 
 # Fix img tags in XHTML
 def fix_tags(s)
-	s.gsub(/<img(.+?)>/,"<img\\1 />").gsub(/<input(.+?)>/,"<input\\1 />").gsub(/ checked /," checked=\"checked\" ")
+	s.gsub(IMG_REGEX, IMG_MATCH).gsub(INPUT_REGEX, INPUT_MATCH).gsub(CHECKED_REGEX, CHECKED_MATCH)
+end
+
+# Fetch IMG file and download it into a temp file
+def create_img_file(path)
+	# Parse out the path properly
+	file_name = File.basename path
+	end_path = IMG_DIR + "/" + file_name
+	
+	#File.open(end_path, "wb") do |file|
+	#	file.write( open( (WEBSITE_URI + path).encode("ISO-8859-1") ).read )
+	#end
+
+	uri = URI.parse(WEBSITE_URI)
+	http = Net::HTTP.new(uri.host,uri.port)
+	http.use_ssl = true
+	http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+	resp = http.get(path)
+	open(end_path,"wb") { |file|
+		file.write(resp.body)
+	}
+	
+	# Again, Lua habits. :P
+	return end_path
+end
+
+# Parse out URIs and handle them nicely
+def parse_img_uri(html_doc)
+	finished = html_doc.clone
+	html_doc.scan(IMAGE_REGEX).each do |match|
+		raise("Match should be a length of 1") if match.length != 1
+			
+		finished.gsub!(match[0],create_img_file(match[0]))
+	end
+	
+	# This is Ruby style for ya. ;)
+	html_doc = finished.encode("utf-8")
 end
 
 # Uses Nokogiri to parse the provided page and divide it into questions and answers
@@ -223,7 +265,7 @@ def create_xhtml(pages)
 	xhtml_doc_q += ENDING_XHTML
 	xhtml_doc_a += ENDING_XHTML
 	
-	return xhtml_doc_q,xhtml_doc_a
+	return parse_img_uri(xhtml_doc_q),parse_img_uri(xhtml_doc_a)
 end
 
 # Fetch singlular page contents
@@ -307,7 +349,7 @@ def generate_pages(date,final=Date.today)
 	
 	# Append URL
 	days.each_with_index do |data,index|
-		days[index] = %{https://sat.collegeboard.org/practice/sat-question-of-the-day?questionId=#{DateTime.parse(data.to_s).strftime("%Y%m%d")}}
+		days[index] = %{#{BASE_PAGE_URI}#{DateTime.parse(data.to_s).strftime("%Y%m%d")}}
 	end
 	
 	return days
@@ -452,7 +494,7 @@ puts "Export complete!"
 puts %{Exported #{count-1} questions!}
 =end
 driver = Selenium::WebDriver.for :firefox
-xhtml_q, xhtml_a = create_xhtml([handle_page(fetch_page(driver,"https://sat.collegeboard.org/practice/sat-question-of-the-day"))])
+xhtml_q, xhtml_a = create_xhtml([handle_page(fetch_page(driver,"#{WEBSITE_URI}/practice/sat-question-of-the-day?questionId=20150805"))])
 puts xhtml_q
 driver.close
 driver.quit
