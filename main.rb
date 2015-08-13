@@ -33,6 +33,34 @@ class Object
 	end
 end
 
+# Thanks, miister Ivan Black.
+class String
+	def black;          "\e[30m#{self}\e[0m" end
+	def red;            "\e[31m#{self}\e[0m" end
+	def green;          "\e[32m#{self}\e[0m" end
+	def brown;          "\e[33m#{self}\e[0m" end
+	def blue;           "\e[34m#{self}\e[0m" end
+	def magenta;        "\e[35m#{self}\e[0m" end
+	def cyan;           "\e[36m#{self}\e[0m" end
+	def gray;           "\e[37m#{self}\e[0m" end
+
+	def bg_black;       "\e[40m#{self}\e[0m" end
+	def bg_red;         "\e[41m#{self}\e[0m" end
+	def bg_green;       "\e[42m#{self}\e[0m" end
+	def bg_brown;       "\e[43m#{self}\e[0m" end
+	def bg_blue;        "\e[44m#{self}\e[0m" end
+	def bg_magenta;     "\e[45m#{self}\e[0m" end
+	def bg_cyan;        "\e[46m#{self}\e[0m" end
+	def bg_gray;        "\e[47m#{self}\e[0m" end
+
+	def bold;           "\e[1m#{self}\e[21m" end
+	def italic;         "\e[3m#{self}\e[23m" end
+	def underline;      "\e[4m#{self}\e[24m" end
+	def blink;			"\e[5m#{self}\e[25m" end
+	def reverse_color;	"\e[7m#{self}\e[27m" end
+	def no_colors;	self.gsub /\e\[\d+m/, ""; end
+end
+
 # Required software
 require "selenium-webdriver"
 require "nokogiri"
@@ -183,6 +211,7 @@ def handle_page(source)
 	if (correct == "" and wrong == "") then
 		raise "Unable to fetch statistics (call 2)"
 	end
+	puts correct,wrong
 	
 	
 	
@@ -371,10 +400,28 @@ def generate_database(obj)
 	end
 end
 
-=begin
-puts "#########################################"
-puts "#       CollegeBoard QotD Fetcher       #"
-puts "#########################################"
+# Export pdf
+def export_pdf(xhtml_q, qpath, xhtml_a, apath)
+	# Export question pdf
+	puts "Preping questions..."
+	kit = PDFKit.new(xhtml_q, :page_size => "Letter",
+		:disable_smart_shrinking => true, :no_pdf_compression => true)
+	puts kit.options
+	puts "Writing questions..."
+	kit.to_pdf qpath
+	
+	puts "Preping answers..."
+	kit = PDFKit.new(xhtml_a, :page_size => "Letter",
+		:disable_smart_shrinking => true, :no_pdf_compression => true)
+	puts "Writing answers..."
+	kit.to_pdf apath
+	
+	return nil
+end
+
+puts "#########################################".green
+puts "#       CollegeBoard QotD Fetcher       #".green
+puts "#########################################".green
 persist = false
 if File.file? "data.db"
 	print "Load previous database (T/F): "
@@ -424,77 +471,58 @@ end
 print "Restrict problems to n (leave blank for false): "
 restrict = gets.chomp
 restrict = restrict.to_i
-count = 1
 
-# Open relevant files
-open(prefix + ".txt","w+") do |output|
-	open(prefix + "-answers.txt","w+") do |output2|
-		# Fetches questions from database or the Internet
-		if not persist
-			puts "Fetching..."
-			questions = fetch_pages(generate_pages(start,stop))
-			# Reject Mathematics questions, since they contain pictures.
-			questions = questions.reject { |data| data[0].match("Mathematics") }
-			if File.file? "data.db"
-				print "Overwrite pre-existing database (T/F): "
-				overwrite = gets.chomp
-				if overwrite.downcase[0,1] == "t"
-					puts "Writing database..."
-					generate_database(questions)
-				else
-					puts "Skipping overwrite..."
-				end
-			else	
-				puts "Writing database..."
-				generate_database(questions)
-			end
+# Fetches questions from database or the Internet
+if not persist
+	puts "Fetching..."
+	questions = fetch_pages(generate_pages(start,stop))
+			
+	if File.file? "data.db"
+		print "Overwrite pre-existing database (T/F): "
+		overwrite = gets.chomp
+		if overwrite.downcase[0,1] == "t"
+			puts "Writing database..."
+			generate_database(questions)
 		else
-			questions = fetch_database()
+			puts "Skipping overwrite..."
 		end
-		
-		# Eliminate deviant topics
-		if filter
-			questions = questions.select { |data| data[0].match(filter) }
-		end
-
-		# Shuffle questions
-		if shuffle
-			questions.shuffle!
-		end
-		
-		# Grab only a selection
-		if restrict != 0
-			if restrict <= questions.length
-				questions = questions.slice(0,restrict)
-			else
-				puts "Too few questions to restrict!"
-			end
-		end
-
-		# Sort questions by type
-		if sortt
-			questions = questions.sort_by {|k| k[0]}
-		end
-
-		puts "Exporting..."
-		# Parse questions into text
-		questions.each_with_index do |data,index|
-			output.puts(%{:-- Question #{count} / #{data[0]}\n})
-			output.puts data[1] + "\n\n" + data[2] + "\n---"
-			output.puts data[3],data[4],data[5],data[6],data[7],"---","\n"
-			output2.puts(%{:-- Question #{count}})
-			output2.puts(%{Answer: \n#{data[8]}},"\n")
-			count += 1
-		end
-		output2.flush
+	else	
+		puts "Writing database..."
+		generate_database(questions)
 	end
-	output.flush
+else
+	questions = fetch_database()
 end
+
+# Eliminate deviant topics
+if filter
+	questions = questions.select { |data| data[0].match(filter) }
+end
+
+# Shuffle questions
+if shuffle
+	questions.shuffle!
+end
+
+# Grab only a selection
+if restrict != 0
+	if restrict <= questions.length
+		questions = questions.slice(0,restrict)
+	else
+		puts "Too few questions to restrict!"
+	end
+end
+
+# Sort questions by type
+if sortt
+	questions = questions.sort_by {|k| k[0]}
+end
+
+puts "Exporting..."
+# Export as PDF
+puts "Parsing HTML"
+xhtml_q,xhtml_a = create_xhtml(questions)
+export_pdf(xhtml_q, prefix + ".pdf", xhtml_a, prefix + "-answers.pdf")
+		
 puts "Export complete!"
-puts %{Exported #{count-1} questions!}
-=end
-driver = Selenium::WebDriver.for :firefox
-xhtml_q, xhtml_a = create_xhtml([handle_page(fetch_page(driver,"#{WEBSITE_URI}/practice/sat-question-of-the-day?questionId=20150805"))])
-puts xhtml_q
-driver.close
-driver.quit
+puts %{Exported #{questions.length} questions!}
