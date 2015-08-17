@@ -127,10 +127,14 @@ end
 # Parse out URIs and handle them nicely
 def parse_img_uri(html_doc)
 	finished = html_doc.clone
+	parsed = []
 	html_doc.scan(IMAGE_REGEX).each do |match|
 		raise("Match should be a length of 1") if match.length != 1
-			
-		finished.gsub!(match[0],create_img_file(match[0]))
+		if not parsed.include? match[0] then
+			file = create_img_file(match[0])
+			parsed << file
+			finished.gsub!(match[0],file)
+		end
 	end
 	
 	# This is Ruby style for ya. ;)
@@ -151,24 +155,29 @@ def handle_page(source)
 	begin
 		stat_table = page.css("table#qotdPercentCorrectTable")
 		stat_table.children.each do |c|
-			c.children.each do |c|
-				if c.name == "tbody" then
-					c.children.each do |ch|
-						if ch.name == "tr" then
-							ch.children.each do |chd|
-								if chd.name == "td" then
-									if correct.empty?
-										correct = chd.text
-									else
-										wrong = chd.text
-									end
-									break
+			if c.name == "tbody" then
+				c.children.each do |ch|
+					if ch.name == "tr" then
+						entry = ""
+						ch.children.each do |chd|
+							if chd.name == "td" then
+								case entry
+								when "Correct"
+									correct = td.text.trim.gsub(",","")
+								when "Incorrect"
+									wrong = td.text.trim.gsub(",","")
+								end
+								break
+							elsif chd.name == "th" then
+								if chd.include? "Correct" then
+									entry = "Correct"
+								elsif chd.include? "Incorrect" then
+									entry = "Incorrect"
 								end
 							end
-							break if not (correct.empty? or wrong.empty?)
 						end
+						break if not (correct.empty? or wrong.empty?)
 					end
-					break if not (correct.empty? or wrong.empty?)
 				end
 				break if not (correct.empty? or wrong.empty?)
 			end
@@ -211,7 +220,7 @@ def handle_page(source)
 	if (correct == "" and wrong == "") then
 		raise "Unable to fetch statistics (call 2)"
 	end
-	puts correct,wrong
+	total = correct + wrong if total == 0
 	
 	
 	
@@ -285,16 +294,17 @@ def create_xhtml(pages)
 		section += "\n<p><br /></p>\n<hr />\n"
 		
 		# Push to answer document
-		xhtml_doc_a += section
+		xhtml_doc_a += parse_img_uri(section)
 		################################################
 		
 		# Iterate count
+		puts "Parsed ##{count}"
 		count += 1
 	end
 	xhtml_doc_q += ENDING_XHTML
 	xhtml_doc_a += ENDING_XHTML
 	
-	return parse_img_uri(xhtml_doc_q),parse_img_uri(xhtml_doc_a)
+	return xhtml_doc_q,xhtml_doc_a
 end
 
 # Fetch singlular page contents
