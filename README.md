@@ -1,4 +1,7 @@
+>The CollegeBoard no longer provides the Question of the Day through a web browser, making this program effectively useless.  There will be no more updates.  Sorry.
+
 ## CBQF
+
 A CollegeBoard QotD Fetcher, written in Ruby.
 
 >CollegeBoard, SAT, and PSAT/NMSQT are registered trademarks of The College Board and National Merit Corporation and do not endorse this software.
